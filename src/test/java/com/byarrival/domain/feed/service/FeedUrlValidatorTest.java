@@ -44,6 +44,20 @@ class FeedUrlValidatorTest {
         assertInvalid(resolvingTo(ip), "https://internal.example.com/rss");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"100.64.0.1", "100.127.255.254", "198.18.0.1", "198.19.255.254", "192.0.0.8", "240.0.0.1", "255.255.255.255"})
+    void 예약된_IPv4_대역이면_거부한다(String ip) {
+        assertInvalid(resolvingTo(ip), "https://reserved.example.com/rss");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"100.63.255.255", "100.128.0.1", "198.17.255.255", "198.20.0.1", "198.51.100.1", "203.0.113.10", "198.51.101.1", "192.0.1.1"})
+    void 예약_대역_경계_밖의_공개_주소는_통과한다(String ip) {
+        URI uri = resolvingTo(ip).validate("https://news.example.com/rss");
+
+        assertThat(uri.getHost()).isEqualTo("news.example.com");
+    }
+
     @Test
     void 해석된_주소_중_하나라도_내부망이면_거부한다() {
         FeedUrlValidator validator = new FeedUrlValidator(host -> new InetAddress[] {

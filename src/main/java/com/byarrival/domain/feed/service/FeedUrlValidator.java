@@ -2,6 +2,7 @@ package com.byarrival.domain.feed.service;
 
 import com.byarrival.common.exception.BusinessException;
 import com.byarrival.domain.feed.exception.FeedErrorCode;
+import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.URI;
@@ -77,7 +78,22 @@ public class FeedUrlValidator {
             || address.isLinkLocalAddress()
             || address.isSiteLocalAddress()
             || address.isMulticastAddress()
+            || isReservedIpv4(address)
             || isIpv6UniqueLocal(address);
+    }
+
+    private boolean isReservedIpv4(InetAddress address) {
+        if (!(address instanceof Inet4Address)) {
+            return false;
+        }
+        byte[] ip = address.getAddress();
+        int first = ip[0] & 0xFF;
+        int second = ip[1] & 0xFF;
+        int third = ip[2] & 0xFF;
+        return (first == 100 && second >= 64 && second <= 127)   // 100.64.0.0/10 CGNAT
+            || (first == 198 && (second == 18 || second == 19))  // 198.18.0.0/15 벤치마크
+            || (first == 192 && second == 0 && third == 0)       // 192.0.0.0/24 IETF 프로토콜
+            || first >= 240;                                     // 240.0.0.0/4 예약, 브로드캐스트
     }
 
     private boolean isIpv6UniqueLocal(InetAddress address) {
