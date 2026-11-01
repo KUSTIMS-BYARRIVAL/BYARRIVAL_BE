@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class FeedServiceTest {
@@ -38,7 +39,7 @@ class FeedServiceTest {
     @Test
     void Feed를_등록하면_활성_상태로_저장된다() {
         given(rssFeedRepository.existsByFeedUrl(FEED_URL)).willReturn(false);
-        given(rssFeedRepository.save(any(RssFeed.class))).willAnswer(invocation -> {
+        given(rssFeedRepository.saveAndFlush(any(RssFeed.class))).willAnswer(invocation -> {
             RssFeed feed = invocation.getArgument(0);
             ReflectionTestUtils.setField(feed, "id", 1L);
             return feed;
@@ -55,7 +56,7 @@ class FeedServiceTest {
 
     @Test
     void 카테고리_없이도_등록할_수_있다() {
-        given(rssFeedRepository.save(any(RssFeed.class))).willAnswer(invocation -> invocation.getArgument(0));
+        given(rssFeedRepository.saveAndFlush(any(RssFeed.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         FeedResponse response = feedService.register("한국경제", FEED_URL, " ");
 
@@ -70,7 +71,19 @@ class FeedServiceTest {
             .isInstanceOf(BusinessException.class)
             .extracting(e -> ((BusinessException) e).getErrorCode())
             .isEqualTo(FeedErrorCode.DUPLICATE_FEED_URL);
-        verify(rssFeedRepository, never()).save(any());
+        verify(rssFeedRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void 중복_확인_후_다른_요청이_먼저_저장하면_중복_URL로_응답한다() {
+        given(rssFeedRepository.existsByFeedUrl(FEED_URL)).willReturn(false);
+        given(rssFeedRepository.saveAndFlush(any(RssFeed.class)))
+            .willThrow(new DataIntegrityViolationException("uk_rss_feed_feed_url"));
+
+        assertThatThrownBy(() -> feedService.register("한국경제", FEED_URL, "경제"))
+            .isInstanceOf(BusinessException.class)
+            .extracting(e -> ((BusinessException) e).getErrorCode())
+            .isEqualTo(FeedErrorCode.DUPLICATE_FEED_URL);
     }
 
     @Test
@@ -79,7 +92,7 @@ class FeedServiceTest {
             .isInstanceOf(BusinessException.class)
             .extracting(e -> ((BusinessException) e).getErrorCode())
             .isEqualTo(FeedErrorCode.INVALID_FEED_URL);
-        verify(rssFeedRepository, never()).save(any());
+        verify(rssFeedRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -127,6 +140,6 @@ class FeedServiceTest {
             .isInstanceOf(BusinessException.class)
             .extracting(e -> ((BusinessException) e).getErrorCode())
             .isEqualTo(CommonErrorCode.INVALID_INPUT_VALUE);
-        verify(rssFeedRepository, never()).save(any());
+        verify(rssFeedRepository, never()).saveAndFlush(any());
     }
 }

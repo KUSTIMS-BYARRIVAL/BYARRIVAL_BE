@@ -8,6 +8,7 @@ import com.byarrival.domain.feed.exception.FeedErrorCode;
 import com.byarrival.domain.feed.repository.RssFeedRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,8 +34,13 @@ public class FeedService {
             throw new BusinessException(FeedErrorCode.DUPLICATE_FEED_URL);
         }
 
-        RssFeed feed = rssFeedRepository.save(RssFeed.create(pressName.strip(), normalizedUrl, stripOrNull(rssCategory)));
-        return FeedResponse.from(feed);
+        RssFeed feed = RssFeed.create(pressName.strip(), normalizedUrl, stripOrNull(rssCategory));
+        try {
+            // 중복 확인과 저장 사이에 같은 URL이 먼저 저장되면 UNIQUE 제약 위반으로 막힌다
+            return FeedResponse.from(rssFeedRepository.saveAndFlush(feed));
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(FeedErrorCode.DUPLICATE_FEED_URL);
+        }
     }
 
     @Transactional(readOnly = true)
