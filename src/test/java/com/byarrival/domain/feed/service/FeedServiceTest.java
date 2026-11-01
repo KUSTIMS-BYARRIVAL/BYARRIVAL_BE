@@ -15,8 +15,10 @@ import com.byarrival.domain.feed.entity.RssFeed;
 import com.byarrival.domain.feed.exception.FeedErrorCode;
 import com.byarrival.domain.feed.repository.RssFeedRepository;
 import java.net.InetAddress;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -78,12 +80,22 @@ class FeedServiceTest {
     void 중복_확인_후_다른_요청이_먼저_저장하면_중복_URL로_응답한다() {
         given(rssFeedRepository.existsByFeedUrl(FEED_URL)).willReturn(false);
         given(rssFeedRepository.saveAndFlush(any(RssFeed.class)))
-            .willThrow(new DataIntegrityViolationException("uk_rss_feed_feed_url"));
+            .willThrow(integrityViolation("23505", FeedService.FEED_URL_UNIQUE_CONSTRAINT));
 
         assertThatThrownBy(() -> feedService.register("한국경제", FEED_URL, "경제"))
             .isInstanceOf(BusinessException.class)
             .extracting(e -> ((BusinessException) e).getErrorCode())
             .isEqualTo(FeedErrorCode.DUPLICATE_FEED_URL);
+    }
+
+    @Test
+    void feed_url_중복이_아닌_무결성_오류는_그대로_던진다() {
+        DataIntegrityViolationException notNull = integrityViolation("23502", null);
+        DataIntegrityViolationException primaryKey = integrityViolation("23505", "rss_feed_pkey");
+        given(rssFeedRepository.saveAndFlush(any(RssFeed.class))).willThrow(notNull, primaryKey);
+
+        assertThatThrownBy(() -> feedService.register("한국경제", FEED_URL, "경제")).isSameAs(notNull);
+        assertThatThrownBy(() -> feedService.register("한국경제", FEED_URL, "경제")).isSameAs(primaryKey);
     }
 
     @Test
@@ -133,6 +145,12 @@ class FeedServiceTest {
             .isInstanceOf(BusinessException.class)
             .extracting(e -> ((BusinessException) e).getErrorCode())
             .isEqualTo(FeedErrorCode.FEED_NOT_FOUND);
+    }
+
+    private DataIntegrityViolationException integrityViolation(String sqlState, String constraintName) {
+        SQLException sqlException = new SQLException("constraint violation", sqlState);
+        return new DataIntegrityViolationException("could not execute statement",
+            new ConstraintViolationException("could not execute statement", sqlException, constraintName));
     }
 
     private void assertInvalidInput(Runnable action) {

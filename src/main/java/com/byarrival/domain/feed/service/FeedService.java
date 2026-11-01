@@ -8,6 +8,7 @@ import com.byarrival.domain.feed.exception.FeedErrorCode;
 import com.byarrival.domain.feed.repository.RssFeedRepository;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,9 @@ public class FeedService {
 
     private static final int MAX_PRESS_NAME_LENGTH = 50;
     private static final int MAX_RSS_CATEGORY_LENGTH = 50;
+    private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
+    // V1__init.sql의 feed_url UNIQUE에 PostgreSQL이 붙인 이름
+    static final String FEED_URL_UNIQUE_CONSTRAINT = "rss_feed_feed_url_key";
 
     private final RssFeedRepository rssFeedRepository;
     private final FeedUrlValidator feedUrlValidator;
@@ -37,10 +41,12 @@ public class FeedService {
 
         RssFeed feed = RssFeed.create(pressName.strip(), normalizedUrl, stripOrNull(rssCategory));
         try {
-            // 중복 확인과 저장 사이에 같은 URL이 먼저 저장되면 UNIQUE 제약 위반으로 막힌다
             return FeedResponse.from(rssFeedRepository.saveAndFlush(feed));
         } catch (DataIntegrityViolationException e) {
-            throw new BusinessException(FeedErrorCode.DUPLICATE_FEED_URL);
+            if (isFeedUrlUniqueViolation(e)) {
+                throw new BusinessException(FeedErrorCode.DUPLICATE_FEED_URL);
+            }
+            throw e;
         }
     }
 
@@ -67,6 +73,16 @@ public class FeedService {
         if ((!nullable && stripped.isEmpty()) || stripped.length() > maxLength) {
             throw new BusinessException(CommonErrorCode.INVALID_INPUT_VALUE);
         }
+    }
+
+    private boolean isFeedUrlUniqueViolation(DataIntegrityViolationException e) {
+        for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation) {
+                return UNIQUE_VIOLATION_SQL_STATE.equals(violation.getSQLState())
+                    && FEED_URL_UNIQUE_CONSTRAINT.equalsIgnoreCase(violation.getConstraintName());
+            }
+        }
+        return false;
     }
 
     private String stripOrNull(String value) {
