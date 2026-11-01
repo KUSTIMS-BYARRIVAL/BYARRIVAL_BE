@@ -25,7 +25,8 @@ public class FeedService {
     private final RssFeedRepository rssFeedRepository;
     private final FeedUrlValidator feedUrlValidator;
 
-    @Transactional
+    // URL 검증의 DNS 조회가 트랜잭션을 붙잡지 않도록 트랜잭션을 걸지 않는다.
+    // 중복 확인과 저장은 각각 Repository 트랜잭션에서 실행되고, 그 사이의 중복은 UNIQUE 제약이 막는다.
     public FeedResponse register(String pressName, String feedUrl, String rssCategory) {
         validateText(pressName, MAX_PRESS_NAME_LENGTH, false);
         validateText(rssCategory, MAX_RSS_CATEGORY_LENGTH, true);
